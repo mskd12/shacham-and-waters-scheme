@@ -71,7 +71,9 @@ struct file_t* get_file_blocks(char *filename)
         return NULL;
     }
 
-    Log(LOG_TRACE,"%s:[%s]\n",__FUNCTION__,filename);
+    printf("Opening %s\n\n", filename);
+
+    // Log(LOG_TRACE,"%s:[%s]\n",__FUNCTION__,filename);
 
     FILE *file_handle;
     file_handle = open_file(filename);

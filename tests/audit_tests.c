@@ -1,6 +1,7 @@
 #define TARGET "Audit Tests"
 
 #include <stdio.h>
+#include <sys/time.h>
 
 #include <handlefile.h>
 #include <logging.h>
@@ -20,12 +21,13 @@ int main(int argc, char *argv[])
     startup();
     
     struct file_t *f = get_file_blocks(argv[1]);
+    printf("Number of file blocks (n) = %d\n", f->nr_blocks);
 
     tag_param_t params;
 
 
     struct keypair_t* kpair;
-    Log(LOG_TRACE,"Line %d",__LINE__);
+    // Log(LOG_TRACE,"Line %d",__LINE__);
     kpair = generate_key_pair();
     struct public_key_t *pubkey = kpair->pub_key;
     struct private_key_t *pkey = kpair->pvt_key;
@@ -48,32 +50,47 @@ int main(int argc, char *argv[])
     params.alpha = pkey->alpha;
     params.secret_x = pkey->x;
 
+    printf("Generating tags\n");
     set_tags(f,&params);
+    printf("Tag generation complete\n");
 
+    // struct timeval  tv1, tv2;
+    // printf("Timing begins\n");
+    // gettimeofday(&tv1, NULL);
 
     struct query_t query_obj = {
-        .query_length = 1,
+        .query_length = 30,
     };
     query_obj.pairing   = pkey->pairing;
     query_obj.indices   = (uint32_t*)malloc(sizeof(uint32_t) * query_obj.query_length);
     query_obj.nu        = (struct element_s*)malloc(sizeof(struct element_s) * query_obj.query_length);
 
-    query_obj.indices[0] = 0;
-    query_obj.indices[1] = 1;
-    query_obj.indices[2] = 2;
+    // Use current time as seed for random generator
+    srand(time(0));
 
     for(int i=0;i<query_obj.query_length;i++) {
-        element_init_Zr(query_obj.nu+i,pkey->pairing);
-        element_random(query_obj.nu+i);
+        query_obj.indices[i] = rand() % f->nr_blocks;
+        element_init_Zr(&query_obj.nu[i], pkey->pairing);
+        element_random(&query_obj.nu[i]);
+        // element_printf("Index %d: %B\n", i, &query_obj.nu[i]);
     }
     
     struct query_response_t* response = query(f,query_obj);
-    //Log(LOG_TRACE,"Sigma:%B\nMu:%B\n",response->sigma,response->mu);
+    // Log(LOG_TRACE,"Sigma:%B\nMu:%B\n",response->sigma,response->mu);
+
+    // gettimeofday(&tv2, NULL);
+    // printf ("Query length = %d, Total time = %f milliseconds\n",
+    //         (int) query_obj.query_length,
+    //         (double) (tv2.tv_usec - tv1.tv_usec) / 1000 +
+    //         (double) (tv2.tv_sec - tv1.tv_sec) * 1000);
 
     int result = verify_storage(f,*response,query_obj,pkey->g,params.alpha,pubkey->v);
-    Log(LOG_TRACE,"Response: %d\n",result);
+    printf("Verification result: %s\n", (result == 0) ? "SUCCESS" : "FAIL");
 
-    EXIT_TEST();
+    if (result == 0)
+        EXIT_TEST();
+    else
+        return -1;
 
     return 0;
 }

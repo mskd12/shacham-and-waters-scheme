@@ -1,6 +1,7 @@
 #include <pbc/pbc.h>
 #include <stdio.h>
 #include <gmp.h>
+#include <time.h>
 
 #include <print-utils.h>
 #include <handlefile.h>
@@ -63,17 +64,25 @@ struct query_response_t* query(struct file_t* file,struct query_t query_obj)
     /*
      *  code
      */
+    printf("Timing begins...\n");
+    // struct timeval tv0,  tv1[query_obj.query_length], tv2[query_obj.query_length], tv3;
+    // gettimeofday(&tv0, NULL);
+    clock_t t0 = clock();
     response->pairing = query_obj.pairing;
     struct pairing_s* pairing = query_obj.pairing;
     element_init_G1(response->sigma,pairing);
     element_set1(response->sigma);
     element_init_Zr(response->mu,pairing);
-    for(uint32_t i = 0;i < query_obj.query_length;i++) {
+    int i=0;
+    for(;i < query_obj.query_length;i++) {
         element_t temp;
         element_init_G1(temp,query_obj.pairing);
 
+        // gettimeofday(&tv1[i], NULL);
         element_pow_zn(temp,
-            file->pieces[query_obj.indices[i]].tag->sigma,query_obj.nu+i);
+            file->pieces[query_obj.indices[i]].tag->sigma, &query_obj.nu[i]);
+        // gettimeofday(&tv2[i], NULL);
+        // element_printf("Index %d: %B\n", i, file->pieces[query_obj.indices[i]].tag->sigma);
 
         element_mul(response->sigma,temp,response->sigma);
         mpz_t integer;
@@ -86,16 +95,37 @@ struct query_response_t* query(struct file_t* file,struct query_t query_obj)
 
         element_init_Zr(temp,query_obj.pairing);
         element_set_mpz(temp,integer);
-        element_mul(temp,temp,query_obj.nu+i);
+        element_mul(temp,temp, &query_obj.nu[i]);
         element_add(response->mu,response->mu,temp);
 
         mpz_clear(integer);
-        //element_free(temp);
+        // element_free(temp);
     }
+    // gettimeofday(&tv3, NULL);
+    clock_t t1 = clock();
+    printf("Timing ends...\n");
+
+    // printf ("t1 - t0 = %f milliseconds\n",
+    //         (double) (tv1[0].tv_usec - tv0.tv_usec) / 1000 +
+    //         (double) (tv1[0].tv_sec - tv0.tv_sec) * 1000);
+
+    // printf ("t2 - t1 = %f milliseconds\n",
+    //         (double) (tv2[0].tv_usec - tv1[0].tv_usec) / 1000 +
+    //         (double) (tv2[0].tv_sec - tv1[0].tv_sec) * 1000);
+
+    // printf ("Total= %f milliseconds\n",
+    //         (double) (tv3.tv_usec - tv0.tv_usec) / 1000 +
+    //         (double) (tv3.tv_sec - tv0.tv_sec) * 1000);
+
+    double time_taken = ((double) (t1 - t0))/ (CLOCKS_PER_SEC / 1000); // in ms
+    printf("prove(%d) took %f seconds to execute \n", query_obj.query_length, time_taken);
 
     return response;
 }
 
+/**
+ * g, alpha -> u: generators of G
+ */
 enum audit_result verify_storage(struct file_t* file, 
     struct query_response_t response,struct query_t query_obj, 
     element_t g,element_t alpha,element_t pubkey)
@@ -116,21 +146,21 @@ enum audit_result verify_storage(struct file_t* file,
         struct element_s* new_elem = bls_hash_int
             (query_obj.indices[i],
             query_obj.pairing);
-        element_printf("Hash(%lu):%B\n",query_obj.indices[i],new_elem);
+        // element_printf("Hash(%lu):%B\n",query_obj.indices[i],new_elem);
         element_pow_zn(temp3,new_elem,query_obj.nu+i); // temp3 = H(i)^v(i)
-        element_printf("temp3:%B\n",temp3);
-        element_pow_zn(temp4,alpha,response.mu); // temp4 = alpha^mu
-        element_printf("temp4:%B\n",temp4);        
-        element_mul(temp3,temp3,temp4); // temp3 = temp3 x temp4
-        element_printf("temp3:%B\n",temp3);
+        // element_printf("temp3:%B\n",temp3);
         if(first) {
+            element_pow_zn(temp4,alpha,response.mu); // temp4 = alpha^mu
+            // element_printf("temp4:%B\n",temp4);
+            element_mul(temp3,temp3,temp4); // temp3 = temp3 x temp4
+            // element_printf("temp3:%B\n",temp3);
             first = 0;
             element_set(temp5,temp3);
         }
         else {
             element_mul(temp5,temp5,temp3); // temp5 = temp5*temp3
         }
-        element_printf("temp5:%B\n",temp5);
+        // element_printf("temp5:%B\n",temp5);
         
     }
     pairing_apply(temp2,temp5,pubkey,query_obj.pairing);
